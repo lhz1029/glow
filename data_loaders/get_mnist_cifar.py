@@ -47,6 +47,11 @@ def get_data(problem, shards, rank, data_augmentation_level, n_batch_train, n_ba
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
         y_train = np.reshape(y_train, [-1])
         y_test = np.reshape(y_test, [-1])
+    elif problem == 'cifar100':
+        from keras.datasets import cifar100
+        (x_train, y_train), (x_test, y_test) = cifar100.load_data(label_mode="fine")
+        y_train = np.reshape(y_train, [-1])
+        y_test = np.reshape(y_test, [-1])
     else:
         raise Exception()
 
@@ -68,7 +73,7 @@ def get_data(problem, shards, rank, data_augmentation_level, n_batch_train, n_ba
                 width_shift_range=0.1,
                 height_shift_range=0.1
             )
-        elif problem == 'cifar10':
+        elif problem in ['cifar10', 'cifar100']:
             if data_augmentation_level == 1:
                 datagen_train = ImageDataGenerator(
                     width_shift_range=0.1,

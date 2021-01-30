@@ -70,15 +70,16 @@ def init_visualizations(hps, model, logdir):
 # ===
 def get_data(hps, sess):
     if hps.image_size == -1:
-        hps.image_size = {'mnist': 32, 'cifar10': 32, 'imagenet-oord': 64,
-                          'imagenet': 256, 'celeba': 256, 'lsun_realnvp': 64, 'lsun': 256}[hps.problem]
+        # hps.image_size = {'mnist': 32, 'cifar10': 32, 'imagenet-oord': 64, 'cifar100': 32,
+        #                   'imagenet': 256, 'celeba': 256, 'lsun_realnvp': 64, 'lsun': 256}[hps.problem]
+        hps.image_size = 32
     if hps.n_test == -1:
-        hps.n_test = {'mnist': 10000, 'cifar10': 10000, 'imagenet-oord': 50000, 'imagenet': 50000,
+        hps.n_test = {'mnist': 10000, 'cifar10': 10000, 'imagenet-oord': 50000, 'imagenet': 50000, 'cifar100': 10000, 'imagenet-32': 50000,
                       'celeba': 3000, 'lsun_realnvp': 300*1, 'lsun': 300*1}[hps.problem]
-    hps.n_y = {'mnist': 10, 'cifar10': 10, 'imagenet-oord': 1000,
+    hps.n_y = {'mnist': 10, 'cifar10': 10, 'imagenet-oord': 1000, 'cifar100': 100, 'imagenet-32': 1000,
                'imagenet': 1000, 'celeba': 1, 'lsun_realnvp': 1, 'lsun': 1}[hps.problem]
     if hps.data_dir == "":
-        hps.data_dir = {'mnist': None, 'cifar10': None, 'imagenet-oord': '/mnt/host/imagenet-oord-tfr', 'imagenet': '/mnt/host/imagenet-tfr',
+        hps.data_dir = {'mnist': None, 'cifar10': None, 'cifar100': None, 'imagenet-oord': '/mnt/host/imagenet-oord-tfr', 'imagenet': '/mnt/host/imagenet-tfr',
                         'celeba': '/mnt/host/celeba-reshard-tfr', 'lsun_realnvp': '/mnt/host/lsun_realnvp', 'lsun': '/mnt/host/lsun'}[hps.problem]
 
     if hps.problem == 'lsun_realnvp':
@@ -101,14 +102,16 @@ def get_data(hps, sess):
     print("Batch sizes Train {} Test {} Init {}".format(
         hps.local_batch_train, hps.local_batch_test, hps.local_batch_init))
 
-    if hps.problem in ['imagenet-oord', 'imagenet', 'celeba', 'lsun_realnvp', 'lsun']:
+    if hps.problem in ['imagenet-oord', 'imagenet', 'celeba', 'lsun_realnvp', 'lsun', 'imagenet-32']:
         hps.direct_iterator = True
         import data_loaders.get_data as v
+        image_size = {'mnist': 32, 'cifar10': 32, 'imagenet-oord': 64, 'cifar100': 32, 'imagenet-32': 32,
+                          'imagenet': 256, 'celeba': 256, 'lsun_realnvp': 64, 'lsun': 256}[hps.problem]
         train_iterator, test_iterator, data_init = \
             v.get_data(sess, hps.data_dir, 1, 0, hps.pmap, hps.fmap, hps.local_batch_train,
-                       hps.local_batch_test, hps.local_batch_init, hps.image_size, hps.rnd_crop)
+                       hps.local_batch_test, hps.local_batch_init, image_size, hps.rnd_crop)
 
-    elif hps.problem in ['mnist', 'cifar10']:
+    elif hps.problem in ['mnist', 'cifar10', 'cifar100']:
         hps.direct_iterator = False
         import data_loaders.get_mnist_cifar as v
         train_iterator, test_iterator, data_init = \
@@ -131,6 +134,9 @@ def process_results(results):
 
 
 def main(hps):
+    if 'session' in locals(): # and session is not None:
+        print('Close interactive session')
+        session.close()
     print('initializing horovod')
     # Initialize Horovod.
     # hvd.init()
@@ -176,22 +182,36 @@ def infer(sess, model, hps, iterator):
 
     xs = []
     zs = []
-    for it in range(hps.full_test_its):
+    losses = []
+    # for it in range(hps.full_test_its):
+    for it in range(10):
         if hps.direct_iterator:
             # replace with x, y, attr if you're getting CelebA attributes, also modify get_data
             x, y = sess.run(iterator)
         else:
             x, y = iterator()
-
-        z = model.encode(x, y)
+        if hps.use_samples:
+            z = np.random.normal(size=(hps.n_batch_test, 32 * 32 * 3))
+            print(z.mean(), z.std())
+        else:
+            z = model.encode(x, y)
+            print(z.shape)
         x = model.decode(y, z)
+        loss = model.calculate_likelihood(x, y)
         xs.append(x)
         zs.append(z)
+        losses.append(loss)
 
     x = np.concatenate(xs, axis=0)
     z = np.concatenate(zs, axis=0)
-    np.save('logs/x.npy', x)
-    np.save('logs/z.npy', z)
+    l = np.concatenate(losses, axis=0)
+    np.save(os.path.join(hps.logdir, 'x.npy'), x)
+    np.save(os.path.join(hps.logdir, 'z.npy'), z)
+    np.save(os.path.join(hps.logdir, 'l.npy'), l)
+    from scipy.stats import norm
+    rv = norm()
+    unifs = rv.cdf(z)
+    np.save(os.path.join(hps.logdir, 'unifs.npy'), unifs)
     return zs
 
 
@@ -330,6 +350,8 @@ if __name__ == "__main__":
     parser.add_argument("--restore_path", type=str, default='',
                         help="Location of checkpoint to restore")
     parser.add_argument("--inference", action="store_true",
+                        help="Use in inference mode")
+    parser.add_argument("--use_samples", action="store_true",
                         help="Use in inference mode")
     parser.add_argument("--logdir", type=str,
                         default='./logs', help="Location to save logs")

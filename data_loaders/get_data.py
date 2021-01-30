@@ -22,6 +22,10 @@ def parse_tfrecord_tf(record, res, rnd_crop):
         img = tf.reshape(img, shape)
         img = tf.random_crop(img, [res, res, 3])
     img = tf.reshape(img, [res, res, 3])
+    # TODO: hack
+    # img = tf.image.resize_images(img, [64, 64])
+    img = tf.image.resize_images(img, [32, 32])
+    # img = tf.Print(img, [tf.shape(img)])
     return img, label  # to get CelebA attr, also return attr
 
 
@@ -51,6 +55,7 @@ def get_tfr_file(data_dir, split, res_lg2):
     data_dir = os.path.join(data_dir, split)
     tfr_prefix = os.path.join(data_dir, os.path.basename(data_dir))
     tfr_file = tfr_prefix + '-r%02d-s-*-of-*.tfrecords' % (res_lg2)
+    print(tfr_file)
     files = glob.glob(tfr_file)
     assert len(files) == int(files[0].split(
         "-")[-1].split(".")[0]), "Not all tfrecords files present at %s" % tfr_prefix

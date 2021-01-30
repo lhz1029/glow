@@ -74,7 +74,7 @@ def abstract_model_xy(sess, hps, feeds, train_iterator, test_iterator, data_init
         sess.run(tf.global_variables_initializer())
         sess.run(results_init, {feeds['x']: data_init['x'],
                                 feeds['y']: data_init['y']})
-    sess.run(hvd.broadcast_global_variables(0))
+    # sess.run(hvd.broadcast_global_variables(0))
 
     return m
 
@@ -300,6 +300,10 @@ def model(sess, hps, train_iterator, test_iterator, data_init):
                 eps.append(np.reshape(feps[:, index: index+np.prod(shape)], (bs, *shape)))
                 index += np.prod(shape)
             return eps
+        
+        likelihood, _, _ = _f_loss(X, Y, is_training=False, reuse=True)
+        def calculate_likelihood(x, y):
+            return sess.run(likelihood, {X:x, Y:y})
 
         # If model is uncondtional, always pass y = np.zeros([bs], dtype=np.int32)
         def encode(x, y):
@@ -312,8 +316,10 @@ def model(sess, hps, train_iterator, test_iterator, data_init):
                 feed_dict[dec_eps[i]] = eps[i]
             return sess.run(dec_x, feed_dict)
 
+
         m.encode = encode
         m.decode = decode
+        m.calculate_likelihood = calculate_likelihood
 
     return m
 

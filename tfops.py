@@ -11,7 +11,7 @@ do_print_act_stats = True
 def print_act_stats(x, _str=""):
     if not do_print_act_stats:
         return x
-    if hvd.rank() != 0:
+    if True: # hvd.rank() != 0:
         return x
     if len(x.get_shape()) == 1:
         x_mean, x_var = tf.nn.moments(x, [0], keep_dims=True)
@@ -27,13 +27,13 @@ def print_act_stats(x, _str=""):
 
 
 def allreduce_sum(x):
-    if hvd.size() == 1:
+    if True: # hvd.size() == 1:
         return x
     return hvd.mpi_ops._allreduce(x)
 
 
 def allreduce_mean(x):
-    x = allreduce_sum(x) / hvd.size()
+    x = allreduce_sum(x)
     return x
 
 
@@ -211,7 +211,7 @@ def add_edge_padding(x, filter_size):
         name = "_".join([str(dim) for dim in [a, b, *int_shape(x)[1:3]]])
         pads = tf.get_collection(name)
         if not pads:
-            if hvd.rank() == 0:
+            if True: # hvd.rank() == 0:
                 print("Creating pad", name)
             pad = np.zeros([1] + int_shape(x)[1:3] + [1], dtype='float32')
             pad[:, :a, :, 0] = 1.
